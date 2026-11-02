@@ -8,7 +8,7 @@ import com.asdf.board.be.global.exception.ApiException;
 import com.asdf.board.be.global.exception.ErrorCode;
 import com.asdf.board.be.user.entity.User;
 import com.asdf.board.be.user.repository.UserRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
