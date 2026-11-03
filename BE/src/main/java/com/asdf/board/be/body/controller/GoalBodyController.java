@@ -8,6 +8,7 @@ import com.asdf.board.be.global.exception.ApiException;
 import com.asdf.board.be.global.exception.ErrorCode;
 import com.asdf.board.be.user.entity.User;
 import com.asdf.board.be.user.repository.UserRepository;
+import com.asdf.board.be.global.time.KstTime;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +17,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -36,7 +36,7 @@ public class GoalBodyController {
         Long userId = Long.valueOf(jwt.getSubject());
         return goalBodyRepository.findTopByUserIdOrderByCreatedAtDesc(userId)
                 .map(this::toMap)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+                .orElseThrow(() -> new ApiException(ErrorCode.GOAL_NOT_FOUND));
     }
 
     @PostMapping
@@ -91,8 +91,6 @@ public class GoalBodyController {
         return "목표 체형: " + (description != null ? description : "");
     }
 
-    private static final DateTimeFormatter ISO = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
-
     private Map<String, Object> toMap(GoalBody g) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("goal_body_id", g.getId());
@@ -100,7 +98,7 @@ public class GoalBodyController {
         m.put("description", g.getDescription());
         m.put("summary", g.getSummary());
         m.put("error_message", g.getErrorMessage());
-        m.put("created_at", g.getCreatedAt() != null ? g.getCreatedAt().format(ISO) : null);
+        m.put("created_at", KstTime.iso(g.getCreatedAt()));
         return m;
     }
 }

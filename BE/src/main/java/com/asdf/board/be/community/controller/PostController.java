@@ -102,12 +102,12 @@ public class PostController {
 
     @PostMapping("/{id}/comments")
     @ResponseStatus(HttpStatus.CREATED)
-    public void addComment(
+    public CommentResponse addComment(
             @PathVariable Long id,
             @RequestBody CommentRequest req,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        communityService.addComment(id, req, Long.valueOf(jwt.getSubject()));
+        return communityService.addComment(id, req, Long.valueOf(jwt.getSubject()));
     }
 
     @DeleteMapping("/{id}/comments/{commentId}")

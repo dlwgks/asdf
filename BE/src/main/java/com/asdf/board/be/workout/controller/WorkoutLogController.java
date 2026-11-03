@@ -2,6 +2,7 @@ package com.asdf.board.be.workout.controller;
 
 import com.asdf.board.be.global.exception.ApiException;
 import com.asdf.board.be.global.exception.ErrorCode;
+import com.asdf.board.be.global.time.KstTime;
 import com.asdf.board.be.user.entity.User;
 import com.asdf.board.be.user.repository.UserRepository;
 import com.asdf.board.be.workout.entity.Exercise;
@@ -166,11 +167,13 @@ public class WorkoutLogController {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
         if (!log.getUser().getId().equals(userId(jwt))) throw new ApiException(ErrorCode.FORBIDDEN);
 
+        if (log.getStatus() != WorkoutLog.Status.in_progress) throw new ApiException(ErrorCode.WORKOUT_ALREADY_COMPLETED);
+
         String clientSetId = (String) body.get("client_set_id");
         int setNo = setRepository.countByLogId(id) + 1;
-        BigDecimal weight = new BigDecimal(body.get("weight_kg").toString());
-        int reps = Integer.parseInt(body.get("reps").toString());
-        Integer rest = body.get("rest_sec") != null ? Integer.parseInt(body.get("rest_sec").toString()) : null;
+        BigDecimal weight = parseWeight(body.get("weight_kg"));
+        int reps = parseReps(body.get("reps"));
+        Integer rest = parseRest(body.get("rest_sec"));
 
         WorkoutSet set = WorkoutSet.builder()
                 .log(log)
@@ -195,10 +198,13 @@ public class WorkoutLogController {
         WorkoutSet set = setRepository.findByLogIdAndId(id, setId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
 
-        if (body.containsKey("weight_kg")) set.setWeightKg(new BigDecimal(body.get("weight_kg").toString()));
-        if (body.containsKey("reps")) set.setReps(Integer.parseInt(body.get("reps").toString()));
-        if (body.containsKey("rest_sec")) set.setRestSec(body.get("rest_sec") != null ? Integer.parseInt(body.get("rest_sec").toString()) : null);
-        if (body.containsKey("is_done")) set.setIsDone((Boolean) body.get("is_done"));
+        if (body.containsKey("weight_kg")) set.setWeightKg(parseWeight(body.get("weight_kg")));
+        if (body.containsKey("reps")) set.setReps(parseReps(body.get("reps")));
+        if (body.containsKey("rest_sec")) set.setRestSec(parseRest(body.get("rest_sec")));
+        if (body.containsKey("is_done")) {
+            if (!(body.get("is_done") instanceof Boolean done)) throw new ApiException(ErrorCode.VALIDATION_FAILED);
+            set.setIsDone(done);
+        }
         set.setVersion(set.getVersion() + 1);
         return setToMap(setRepository.save(set));
     }
@@ -232,8 +238,8 @@ public class WorkoutLogController {
         m.put("routine_id", log.getRoutine() != null ? log.getRoutine().getId() : null);
         m.put("status", log.getStatus().name());
         m.put("workout_date", log.getWorkoutDate().toString());
-        m.put("started_at", log.getStartedAt().toString());
-        m.put("completed_at", log.getCompletedAt() != null ? log.getCompletedAt().toString() : null);
+        m.put("started_at", KstTime.iso(log.getStartedAt()));
+        m.put("completed_at", KstTime.iso(log.getCompletedAt()));
         m.put("duration_sec", log.getDurationSec());
         m.put("memo", log.getMemo());
         m.put("set_count", includeSets ? sets.size() : 0);
@@ -253,5 +259,36 @@ public class WorkoutLogController {
                 "is_done", s.getIsDone(),
                 "version", s.getVersion()
         );
+    }
+
+    private BigDecimal parseWeight(Object value) {
+        try {
+            BigDecimal weight = new BigDecimal(String.valueOf(value));
+            if (weight.signum() < 0 || weight.compareTo(new BigDecimal("1000")) > 0) throw new ApiException(ErrorCode.VALIDATION_FAILED);
+            return weight;
+        } catch (NumberFormatException e) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED);
+        }
+    }
+
+    private int parseReps(Object value) {
+        try {
+            int reps = Integer.parseInt(String.valueOf(value));
+            if (reps < 1 || reps > 1000) throw new ApiException(ErrorCode.VALIDATION_FAILED);
+            return reps;
+        } catch (NumberFormatException e) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED);
+        }
+    }
+
+    private Integer parseRest(Object value) {
+        if (value == null) return null;
+        try {
+            int rest = Integer.parseInt(String.valueOf(value));
+            if (rest < 0 || rest > 3600) throw new ApiException(ErrorCode.VALIDATION_FAILED);
+            return rest;
+        } catch (NumberFormatException e) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED);
+        }
     }
 }

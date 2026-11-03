@@ -25,10 +25,16 @@ public enum ErrorCode {
     EMAIL_DUPLICATED(HttpStatus.CONFLICT, "이미 가입된 이메일이에요."),
     NICKNAME_DUPLICATED(HttpStatus.CONFLICT, "이미 사용 중인 닉네임이에요."),
     PROFILE_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 신체정보가 등록되어 있어요."),
+    GOAL_NOT_FOUND(HttpStatus.NOT_FOUND, "등록된 목표 체형이 없어요."),
     POST_NOT_FOUND(HttpStatus.NOT_FOUND, "게시글을 찾을 수 없어요."),
     COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "댓글을 찾을 수 없어요."),
     ALREADY_REPORTED(HttpStatus.CONFLICT, "이미 신고한 대상이에요."),
     ALREADY_BLOCKED(HttpStatus.CONFLICT, "이미 차단한 사용자예요."),
+    INVALID_IMAGE(HttpStatus.BAD_REQUEST, "JPG 또는 PNG 사진만 올릴 수 있어요."),
+    WORKOUT_ALREADY_COMPLETED(HttpStatus.CONFLICT, "이미 끝난 운동 기록이에요."),
+    CANNOT_REPORT_SELF(HttpStatus.BAD_REQUEST, "본인의 글이나 댓글은 신고할 수 없어요."),
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 요청 형식이에요."),
+    AI_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "AI 코치가 지금 답변할 수 없어요. 잠시 후 다시 시도해 주세요."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "잠시 후 다시 시도해 주세요.");
 
     private final HttpStatus status;

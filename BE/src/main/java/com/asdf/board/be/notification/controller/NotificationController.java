@@ -95,7 +95,7 @@ public class NotificationController {
         User u = user(jwt);
         String fcmToken = (String) body.get("fcm_token");
         String platformStr = (String) body.get("platform");
-        if (fcmToken == null || platformStr == null) throw new ApiException(ErrorCode.VALIDATION_FAILED);
+        if (fcmToken == null || fcmToken.isBlank() || fcmToken.length() > 4096 || platformStr == null) throw new ApiException(ErrorCode.VALIDATION_FAILED);
 
         DeviceToken.Platform platform;
         try {
@@ -108,7 +108,7 @@ public class NotificationController {
         if (token == null) {
             token = DeviceToken.builder().user(u).fcmToken(fcmToken).platform(platform).build();
         } else {
-            token.setFcmToken(fcmToken);
+            token.changeToken(fcmToken);
         }
         token = tokenRepository.save(token);
         return Map.of("token_id", token.getId(), "platform", token.getPlatform().name());

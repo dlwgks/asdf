@@ -6,5 +6,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 public interface AiChatMessageRepository extends JpaRepository<AiChatMessage, Long> {
-    List<AiChatMessage> findTop20ByUser_IdOrderByCreatedAtAsc(Long userId);
+    List<AiChatMessage> findTop20ByUser_IdOrderByCreatedAtDesc(Long userId);
+
+    List<AiChatMessage> findTop10ByUser_IdOrderByCreatedAtDesc(Long userId);
+
+    List<AiChatMessage> findByUser_Id(Long userId);
 }

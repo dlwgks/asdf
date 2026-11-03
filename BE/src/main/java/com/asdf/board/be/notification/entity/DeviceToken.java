@@ -26,8 +26,10 @@ public class DeviceToken extends BaseTimeEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "fcm_token", nullable = false, unique = true, length = 255)
+    @Column(name = "fcm_token", nullable = false, unique = true, length = 4096)
     private String fcmToken;
+    @Column(name = "token_hash", nullable = false, length = 64)
+    private String tokenHash;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "platform", nullable = false, length = 10)
@@ -37,7 +39,22 @@ public class DeviceToken extends BaseTimeEntity {
     private DeviceToken(User user, String fcmToken, Platform platform) {
         this.user = user;
         this.fcmToken = fcmToken;
+        this.tokenHash = sha256(fcmToken);
         this.platform = platform;
+    }
+
+    public void changeToken(String fcmToken) {
+        this.fcmToken = fcmToken;
+        this.tokenHash = sha256(fcmToken);
+    }
+
+    private static String sha256(String value) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     public enum Platform { android, ios }

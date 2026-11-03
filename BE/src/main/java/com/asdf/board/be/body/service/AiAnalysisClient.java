@@ -63,8 +63,8 @@ public class AiAnalysisClient {
             return objectMapper.readValue(response.getBody(), new TypeReference<>() {});
 
         } catch (HttpClientErrorException e) {
-            String code = extractErrorCode(e.getResponseBodyAsString());
-            throw new AiAnalysisException(code, e.getMessage());
+            String body = e.getResponseBodyAsString();
+            throw new AiAnalysisException(extractErrorCode(body), extractErrorMessage(body));
         } catch (ResourceAccessException e) {
             throw new AiAnalysisException("AI_TIMEOUT", "AI 서버 연결 시간이 초과됐습니다.");
         } catch (IOException e) {
@@ -88,6 +88,16 @@ public class AiAnalysisClient {
             if (detail instanceof Map<?, ?> m) return (String) m.get("code");
         } catch (Exception ignored) {}
         return "AI_FAILED";
+    }
+
+    private String extractErrorMessage(String body) {
+        try {
+            Map<?, ?> parsed = objectMapper.readValue(body, Map.class);
+            if (parsed.get("detail") instanceof Map<?, ?> m && m.get("message") instanceof String text && !text.isBlank()) {
+                return text.length() > 100 ? text.substring(0, 100) : text;
+            }
+        } catch (Exception ignored) {}
+        return "분석을 완료하지 못했어요. 잠시 후 다시 시도해 주세요.";
     }
 
     public static class AiAnalysisException extends Exception {

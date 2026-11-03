@@ -142,7 +142,7 @@ public class CommunityService {
     }
 
     @Transactional
-    public void addComment(Long postId, CommentRequest req, Long userId) {
+    public CommentResponse addComment(Long postId, CommentRequest req, Long userId) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new ApiException(ErrorCode.POST_NOT_FOUND));
         User user = getUser(userId);
@@ -151,8 +151,9 @@ public class CommunityService {
             parent = commentRepository.findById(req.parentId())
                     .orElseThrow(() -> new ApiException(ErrorCode.COMMENT_NOT_FOUND));
         }
-        commentRepository.save(Comment.builder().post(post).user(user).parent(parent).content(req.content()).build());
+        Comment saved = commentRepository.save(Comment.builder().post(post).user(user).parent(parent).content(req.content()).build());
         post.setCommentCount(post.getCommentCount() + 1);
+        return CommentResponse.of(saved, userId);
     }
 
     @Transactional
@@ -169,7 +170,20 @@ public class CommunityService {
     @Transactional
     public void report(ReportRequest req, Long userId) {
         User reporter = getUser(userId);
-        Report.TargetType type = Report.TargetType.valueOf(req.targetType());
+        Report.TargetType type;
+        Report.Reason reason;
+        try {
+            type = Report.TargetType.valueOf(req.targetType());
+            reason = Report.Reason.valueOf(req.reason());
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED);
+        }
+        if (req.targetId() == null) throw new ApiException(ErrorCode.VALIDATION_FAILED);
+        Long ownerId = switch (type) {
+            case post -> postRepository.findById(req.targetId()).orElseThrow(() -> new ApiException(ErrorCode.POST_NOT_FOUND)).getUser().getId();
+            case comment -> commentRepository.findById(req.targetId()).orElseThrow(() -> new ApiException(ErrorCode.COMMENT_NOT_FOUND)).getUser().getId();
+        };
+        if (ownerId.equals(userId)) throw new ApiException(ErrorCode.CANNOT_REPORT_SELF);
         if (reportRepository.existsByReporterIdAndTargetTypeAndTargetId(userId, type, req.targetId())) {
             throw new ApiException(ErrorCode.ALREADY_REPORTED);
         }
@@ -177,7 +191,7 @@ public class CommunityService {
                 .reporter(reporter)
                 .targetType(type)
                 .targetId(req.targetId())
-                .reason(Report.Reason.valueOf(req.reason()))
+                .reason(reason)
                 .detail(req.detail())
                 .build());
     }

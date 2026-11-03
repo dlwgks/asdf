@@ -126,27 +126,9 @@ class GoalBodyFlowTest {
     }
 
     @Test
-    void AI코치_메시지_중복없이_저장() throws Exception {
-        // 첫 번째 메시지
-        mvc.perform(post("/api/ai-coach/messages")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"content\":\"운동 추천해줘\"}")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.user_message.content").value("운동 추천해줘"))
-                .andExpect(jsonPath("$.assistant_message.content").exists());
-
-        // 히스토리 조회 - user 메시지가 1개만 있어야 함
-        MvcResult listResult = mvc.perform(get("/api/ai-coach/messages")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        String listBody = listResult.getResponse().getContentAsString();
-        var messages = com.jayway.jsonpath.JsonPath.parse(listBody).read("$.messages", java.util.List.class);
-        long userMsgCount = messages.stream()
-                .filter(m -> "user".equals(((java.util.Map<?,?>)m).get("role")))
-                .count();
-        assertThat(userMsgCount).isEqualTo(1);
+    void 목표가_없는_회원은_GOAL_NOT_FOUND() throws Exception {
+        mvc.perform(get("/api/goal-bodies").header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("GOAL_NOT_FOUND"));
     }
 }

@@ -56,6 +56,10 @@ public class AuthController {
         return emailVerificationService.confirm(request.email(), request.code());
     }
 
+    @PostMapping("/logout")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void logout() {}
+
     @Operation(summary = "토큰 갱신", description = "유효한 JWT로 새 JWT를 발급합니다. 만료 7일 전부터 호출을 권장합니다.")
     @PostMapping("/refresh")
     public TokenResponse refresh(@AuthenticationPrincipal Jwt jwt) {

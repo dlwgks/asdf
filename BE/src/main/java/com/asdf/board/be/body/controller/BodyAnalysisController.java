@@ -26,9 +26,12 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import com.asdf.board.be.global.time.KstTime;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Slf4j
@@ -71,15 +74,17 @@ public class BodyAnalysisController {
 
     @GetMapping("/usage")
     public Map<String, Object> usage(@AuthenticationPrincipal Jwt jwt) {
-        int limit = 5;
-        LocalDateTime resetAt = LocalDateTime.now().withDayOfMonth(1).plusMonths(1).withHour(0).withMinute(0).withSecond(0);
-        int used = analysisRepository.countByUserIdAndCreatedAtAfter(userId(jwt),
-                LocalDateTime.now().withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0));
+        int limit = 3;
+        ZoneId kst = ZoneId.of("Asia/Seoul");
+        LocalDate today = LocalDate.now(kst);
+        int used = analysisRepository.countByUserIdAndCreatedAtGreaterThanEqualAndStatusIn(
+                userId(jwt), today.atStartOfDay(), List.of(BodyAnalysis.Status.done, BodyAnalysis.Status.pending));
+        String resetAt = today.plusDays(1).atStartOfDay(kst).toOffsetDateTime().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
         return Map.of(
                 "used", used,
                 "limit", limit,
                 "remaining", Math.max(0, limit - used),
-                "reset_at", resetAt.toString()
+                "reset_at", resetAt
         );
     }
 
@@ -106,7 +111,6 @@ public class BodyAnalysisController {
                 .status(BodyAnalysis.Status.done)
                 .goalBody(goal)
                 .textInput(text)
-                .balanceScore(70)
                 .textSummary(text.length() > 100 ? text.substring(0, 100) + "..." : text)
                 .completedAt(LocalDateTime.now())
                 .build();
@@ -149,8 +153,6 @@ public class BodyAnalysisController {
 
         BodyAnalysis analysis = analysisRepository.save(builder
                 .status(BodyAnalysis.Status.done)
-                .balanceScore(75)
-                .textSummary("전반적으로 균형 잡힌 체형입니다.")
                 .completedAt(LocalDateTime.now()).build());
         return Map.of("analysis_id", analysis.getId());
     }
@@ -295,7 +297,7 @@ public class BodyAnalysisController {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("analysis_id", a.getId());
         m.put("status", a.getStatus().name());
-        m.put("created_at", a.getCreatedAt().toString());
+        m.put("created_at", KstTime.iso(a.getCreatedAt()));
         m.put("balance_score", a.getBalanceScore());
         m.put("body_type", a.getBodyType());
         return m;
@@ -308,7 +310,7 @@ public class BodyAnalysisController {
         m.put("error_message", a.getErrorMessage());
         m.put("measurement_version", a.getMeasurementVersion());
         m.put("text_summary", a.getTextSummary());
-        m.put("completed_at", a.getCompletedAt() != null ? a.getCompletedAt().toString() : null);
+        m.put("completed_at", KstTime.iso(a.getCompletedAt()));
 
         Map<String, Object> measures = new LinkedHashMap<>();
         measures.put("shoulder_tilt_deg", a.getShoulderTiltDeg());
