@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 public record MailProperties(
         boolean enabled,
         String from,
-        @DefaultValue("이재 3대 500") String serviceName,
+        @DefaultValue("MOVID") String serviceName,
         Duration codeTtl,
         Duration tokenTtl,
         Duration resendInterval,
