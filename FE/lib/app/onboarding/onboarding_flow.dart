@@ -1,4 +1,5 @@
 import '../start_screen.dart';
+import '../../core/navigation/home_signal.dart';
 import '../../features/auth/data/local_onboarding_repository.dart';
 import '../../features/community/data/community_repository.dart';
 import '../../features/community/data/local_community_repository.dart';
@@ -84,10 +85,19 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           : widget.photoPicker,
     );
     _model.initialize(startWithLogin: widget.startWithLogin);
+    homeTabRequests.addListener(_goHomeFromSignal);
+  }
+
+  void _goHomeFromSignal() {
+    if (_model.progress.completed && _model.progress.signedIn) return;
+    if (!mounted || _model.busy) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    _model.finish(prepareAnalysis: false);
   }
 
   @override
   void dispose() {
+    homeTabRequests.removeListener(_goHomeFromSignal);
     _settingsRequests.dispose();
     _homeRequests.dispose();
     _model.dispose();
@@ -302,6 +312,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       }
       if (_model.progress.completed && _model.progress.signedIn) {
         return MainShell(
+          apiClient: widget.repository is ServerOnboardingRepository
+              ? (widget.repository as ServerOnboardingRepository).api
+              : null,
           community: _community(),
           homeRequests: _homeRequests,
           settingsRequests: _settingsRequests,

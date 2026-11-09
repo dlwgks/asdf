@@ -45,6 +45,7 @@ abstract final class ApiContract {
   static const reports = '$prefix/reports';
   static const blocks = '$prefix/blocks';
   static String block(int id) => '$blocks/$id';
+  static const aiCoachMessages = '$prefix/ai-coach/messages';
   static const accessTokenLifetimeSeconds = 604800;
   static const maxPhotoBytes = 10 * 1024 * 1024;
   static const photoMaxEdge = 1024;

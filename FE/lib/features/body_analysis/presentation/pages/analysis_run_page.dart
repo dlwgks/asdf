@@ -1,6 +1,7 @@
 import '../../../routines/presentation/pages/routine_detail_page.dart';
 import '../../../routines/presentation/pages/routine_week_page.dart';
 import 'package:flutter/material.dart';
+import '../../../../core/navigation/home_signal.dart';
 import '../../../../ui/core/widgets/design_reference_page.dart';
 import '../../../../ui/core/widgets/management_page.dart';
 import '../../data/models/body_analysis.dart';
@@ -309,6 +310,8 @@ class _AnalysisRunPageState extends State<AnalysisRunPage>
               ],
             ),
           ),
+        const SizedBox(height: 24),
+        ReferenceButton('홈으로 가기', onPressed: requestHomeTab),
       ],
     ];
   }

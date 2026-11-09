@@ -76,6 +76,7 @@ class ApiClient {
     String path, {
     Map<String, dynamic>? body,
     bool authorized = true,
+    Duration? timeout,
   }) async {
     if (authorized) beforeAuthorizedRequest?.call(method, path);
     var token = authorized ? await tokens.read() : null;
@@ -84,7 +85,7 @@ class ApiClient {
     final request = http.Request(method, Uri.parse('$_baseUrl$path'))
       ..headers.addAll(ApiContract.jsonHeaders(token));
     if (body != null) request.body = jsonEncode(body);
-    return _send(request, token);
+    return _send(request, token, timeout);
   }
 
   Future<Map<String, dynamic>?> upload(
@@ -110,13 +111,14 @@ class ApiClient {
 
   Future<Map<String, dynamic>?> _send(
     http.BaseRequest request,
-    String? token,
-  ) async {
+    String? token, [
+    Duration? limit,
+  ]) async {
     final http.Response response;
     try {
       response = await (() async => http.Response.fromStream(
         await _client.send(request),
-      ))().timeout(timeout);
+      ))().timeout(limit ?? timeout);
     } on TimeoutException {
       throw StateError('서버 응답이 늦어요. 잠시 후 다시 시도해 주세요.');
     } on http.ClientException {

@@ -1,3 +1,4 @@
+import '../../core/navigation/home_signal.dart';
 import '../../features/community/presentation/community_controller.dart';
 import '../../features/community/presentation/community_page.dart';
 import '../../features/settings/presentation/account_settings_dependencies.dart';
@@ -24,6 +25,8 @@ import '../../features/workout/presentation/pages/workout_history_page.dart';
 import 'app_bottom_nav.dart';
 import '../../ui/core/widgets/app_scaffold.dart';
 import '../../ui/core/widgets/empty_view.dart';
+import '../../core/network/api_client.dart';
+import '../../features/ai_coach/presentation/ai_coach_page.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({
@@ -47,9 +50,11 @@ class MainShell extends StatefulWidget {
     this.accountSettings,
     this.settingsRequests,
     this.community,
+    this.apiClient,
   }) : assert(initialIndex >= 0 && initialIndex < 5);
 
   final CommunityDependencies? community;
+  final ApiClient? apiClient;
   final HomeServerDependencies? homeServer;
   final Listenable? homeRequests;
   final Listenable? settingsRequests;
@@ -83,6 +88,7 @@ class _MainShellState extends State<MainShell> {
     _selectedIndex = widget.initialIndex;
     widget.homeRequests?.addListener(_returnHome);
     widget.settingsRequests?.addListener(_openPrivacy);
+    homeTabRequests.addListener(_returnHome);
   }
 
   void _openPrivacy() {
@@ -131,6 +137,7 @@ class _MainShellState extends State<MainShell> {
   void dispose() {
     widget.homeRequests?.removeListener(_returnHome);
     widget.settingsRequests?.removeListener(_openPrivacy);
+    homeTabRequests.removeListener(_returnHome);
     super.dispose();
   }
 
@@ -258,10 +265,12 @@ class _MainShellState extends State<MainShell> {
             isActive: _selectedIndex == 2,
             refreshToken: _homeRevision,
           ),
-          const AppScaffold(
-            title: '인공지능 코치',
-            body: EmptyView(title: '인공지능 코치 준비 중', description: '곧 만나요.'),
-          ),
+          widget.apiClient != null
+              ? AiCoachPage(api: widget.apiClient!)
+              : const AppScaffold(
+                  title: '인공지능 코치',
+                  body: EmptyView(title: '인공지능 코치 준비 중', description: '곧 만나요.'),
+                ),
           CommunityPage(
             key: ValueKey(
               'community:${widget.onboarding?.account?.storageOwner}',

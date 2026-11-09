@@ -13,7 +13,7 @@ class ServerGoalRepository implements GoalRepository {
         (await api.send('GET', ApiContract.goalBodies))!,
       );
     } on ApiRequestError catch (e) {
-      if (e.code == 'GOAL_NOT_FOUND') return null;
+      if (e.code == 'GOAL_NOT_FOUND' || e.code == 'NOT_FOUND' || e.status == 404) return null;
       rethrow;
     }
   }
