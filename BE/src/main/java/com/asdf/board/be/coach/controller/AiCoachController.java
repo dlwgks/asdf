@@ -17,6 +17,7 @@ import com.asdf.board.be.workout.repository.RoutineItemRepository;
 import com.asdf.board.be.workout.repository.RoutineRepository;
 import com.asdf.board.be.workout.repository.WorkoutLogRepository;
 import com.asdf.board.be.workout.repository.WorkoutSetRepository;
+import tools.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
