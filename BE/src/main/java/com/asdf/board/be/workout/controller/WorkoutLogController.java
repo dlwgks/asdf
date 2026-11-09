@@ -35,6 +35,7 @@ public class WorkoutLogController {
     private final WorkoutSetRepository setRepository;
     private final ExerciseRepository exerciseRepository;
     private final RoutineRepository routineRepository;
+    private final RoutineItemRepository routineItemRepository;
     private final UserRepository userRepository;
 
     private Long userId(Jwt jwt) { return Long.valueOf(jwt.getSubject()); }
@@ -152,12 +153,30 @@ public class WorkoutLogController {
         double volume = sets.stream().filter(WorkoutSet::getIsDone)
                 .mapToDouble(s -> s.getWeightKg().doubleValue() * s.getReps()).sum();
 
-        return Map.of(
-                "log_id", log.getId(),
-                "duration_sec", (int) durationSec,
-                "total_sets", sets.size(),
-                "total_volume_kg", volume
-        );
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("log_id", log.getId());
+        result.put("completed_at", KstTime.iso(now));
+        result.put("duration_sec", (int) durationSec);
+        result.put("set_count", sets.size());
+        result.put("total_sets", sets.size());
+        result.put("total_volume_kg", volume);
+
+        Routine routine = log.getRoutine();
+        if (routine != null) {
+            var items = routineItemRepository.findByRoutineIdOrderByOrderNoAsc(routine.getId());
+            Set<Long> doneExercises = new HashSet<>();
+            for (WorkoutLog l : logRepository.findByRoutineIdAndStatus(routine.getId(), WorkoutLog.Status.completed)) {
+                doneExercises.add(l.getExercise().getId());
+            }
+            int done = (int) items.stream().filter(it -> doneExercises.contains(it.getExercise().getId())).count();
+            if (!items.isEmpty() && done >= items.size()) {
+                routine.setStatus(Routine.Status.done);
+                routineRepository.save(routine);
+            }
+            result.put("routine_status", routine.getStatus().name());
+            result.put("routine_progress", Map.of("done", done, "total", items.size()));
+        }
+        return result;
     }
 
     @PostMapping("/{id}/sets")
@@ -221,7 +240,7 @@ public class WorkoutLogController {
     }
 
     private Map<String, Object> logToMap(WorkoutLog log, boolean includeSets) {
-        List<WorkoutSet> sets = includeSets ? setRepository.findByLogIdOrderBySetNoAsc(log.getId()) : List.of();
+        List<WorkoutSet> sets = setRepository.findByLogIdOrderBySetNoAsc(log.getId());
         double volume = sets.stream().filter(WorkoutSet::getIsDone)
                 .mapToDouble(s -> s.getWeightKg().doubleValue() * s.getReps()).sum();
 
@@ -242,7 +261,7 @@ public class WorkoutLogController {
         m.put("completed_at", KstTime.iso(log.getCompletedAt()));
         m.put("duration_sec", log.getDurationSec());
         m.put("memo", log.getMemo());
-        m.put("set_count", includeSets ? sets.size() : 0);
+        m.put("set_count", sets.size());
         m.put("total_volume_kg", volume);
         if (includeSets) m.put("sets", sets.stream().map(this::setToMap).toList());
         return m;

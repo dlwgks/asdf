@@ -10,7 +10,10 @@ import com.asdf.board.be.body.service.AiAnalysisClient;
 import com.asdf.board.be.global.exception.ApiException;
 import com.asdf.board.be.global.exception.ErrorCode;
 import com.asdf.board.be.global.enums.TargetPart;
+import com.asdf.board.be.correction.entity.CorrectionExercise;
+import com.asdf.board.be.correction.repository.CorrectionExerciseRepository;
 import com.asdf.board.be.user.entity.User;
+import com.asdf.board.be.user.repository.UserProfileRepository;
 import com.asdf.board.be.user.repository.UserRepository;
 import com.asdf.board.be.workout.entity.*;
 import com.asdf.board.be.workout.repository.*;
@@ -50,6 +53,8 @@ public class BodyAnalysisController {
     private final RoutineItemRepository routineItemRepository;
     private final ExerciseRepository exerciseRepository;
     private final AiAnalysisClient aiClient;
+    private final UserProfileRepository profileRepository;
+    private final CorrectionExerciseRepository correctionRepository;
     private ObjectMapper objectMapper = new ObjectMapper();
 
     private Long userId(Jwt jwt) { return Long.valueOf(jwt.getSubject()); }
@@ -137,10 +142,13 @@ public class BodyAnalysisController {
 
         if (aiClient.isConfigured()) {
             BodyAnalysis pending = analysisRepository.save(builder.status(BodyAnalysis.Status.pending).build());
+            long startedAt = System.nanoTime();
             try {
                 Map<String, Object> ai = aiClient.analyze(photo.getStorageKey(),
                         sidePhoto != null ? sidePhoto.getStorageKey() : null);
                 applyAiResult(pending, ai);
+                applyGoalSimilarity(pending, photo, goal);
+                waitForMinimumDuration(startedAt);
             } catch (AiAnalysisClient.AiAnalysisException e) {
                 log.warn("AI analysis failed: {} - {}", e.getCode(), e.getMessage());
                 pending.setStatus(BodyAnalysis.Status.failed);
@@ -193,6 +201,14 @@ public class BodyAnalysisController {
         }
     }
 
+    private void applyGoalSimilarity(BodyAnalysis a, Photo front, GoalBody goal) {
+        if (goal == null || goal.getSourcePhoto() == null) return;
+        Integer score = aiClient.similarity(front.getStorageKey(), goal.getSourcePhoto().getStorageKey());
+        if (score == null) return;
+        a.setComparisonSummary("목표 체형 사진과의 시각적 유사도 " + score + "%");
+        a.setComparisonDetail("DINOv3 이미지 특징을 비교한 참고 값이에요. 자세·의복·배경의 영향을 받으며 근육량이나 체형 일치도를 뜻하지 않아요.");
+    }
+
     private BigDecimal toBd(Object v) {
         if (v == null) return null;
         try { return new BigDecimal(v.toString()); } catch (Exception e) { return null; }
@@ -224,16 +240,17 @@ public class BodyAnalysisController {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
         if (!analysis.getUser().getId().equals(userId(jwt))) throw new ApiException(ErrorCode.FORBIDDEN);
 
-        List<Exercise> exercises = exerciseRepository.findByIsActiveTrueOrderByNameAsc(PageRequest.of(0, 10))
+        List<Exercise> exercises = exerciseRepository.findByIsActiveTrueOrderByNameAsc(PageRequest.of(0, 100))
                 .getContent();
         if (exercises.isEmpty()) throw new ApiException(ErrorCode.INTERNAL_ERROR);
 
-        TargetPart[] parts = TargetPart.values();
+        List<TargetPart> partOrder = priorityParts(analysis);
+        List<Integer> dayOffsets = spreadDays(weeklyFrequency(u.getId()));
         List<Map<String, Object>> routines = new ArrayList<>();
         LocalDate today = LocalDate.now();
 
-        for (int i = 0; i < Math.min(7, parts.length); i++) {
-            LocalDate date = today.plusDays(i);
+        for (int i = 0; i < dayOffsets.size(); i++) {
+            LocalDate date = today.plusDays(dayOffsets.get(i));
             Routine existing = routineRepository.findByUserIdAndScheduledDate(u.getId(), date).orElse(null);
             if (existing != null) {
                 if (existing.getStatus() != Routine.Status.planned) continue;
@@ -242,7 +259,7 @@ public class BodyAnalysisController {
                 routineRepository.flush();
             }
 
-            TargetPart part = parts[i % parts.length];
+            TargetPart part = partOrder.get(i % partOrder.size());
             Routine r = Routine.builder()
                     .user(u)
                     .analysis(analysis)
@@ -266,7 +283,7 @@ public class BodyAnalysisController {
                         .orderNo(j + 1)
                         .targetSets(3)
                         .targetReps(10)
-                        .reason(partLabel(part) + " 강화에 효과적인 운동이에요.")
+                        .reason(j == 0 ? itemReason(part, analysis) : partLabel(part) + " 강화에 효과적인 운동이에요.")
                         .build());
             }
 
@@ -280,6 +297,84 @@ public class BodyAnalysisController {
         }
 
         return Map.of("routines", routines);
+    }
+
+    @org.springframework.beans.factory.annotation.Value("${vitality.analysis.min-seconds:0}")
+    private int analysisMinSeconds;
+
+    private void waitForMinimumDuration(long startedAtNanos) {
+        long remainingMillis = analysisMinSeconds * 1000L - (System.nanoTime() - startedAtNanos) / 1_000_000L;
+        if (remainingMillis <= 0) return;
+        try {
+            Thread.sleep(remainingMillis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static final double TILT_CAUTION_DEG = 2.5;
+    private static final int DEFAULT_WEEKLY_FREQUENCY = 3;
+
+    private static double tilt(BigDecimal value) {
+        return value == null ? 0.0 : value.doubleValue();
+    }
+
+    private List<TargetPart> priorityParts(BodyAnalysis analysis) {
+        double shoulder = tilt(analysis.getShoulderTiltDeg());
+        double pelvis = tilt(analysis.getPelvisTiltDeg());
+        List<TargetPart> shoulderParts = shoulder >= TILT_CAUTION_DEG
+                ? List.of(TargetPart.shoulder, TargetPart.back) : List.of();
+        List<TargetPart> pelvisParts = pelvis >= TILT_CAUTION_DEG
+                ? List.of(TargetPart.core, TargetPart.leg) : List.of();
+        List<TargetPart> order = new ArrayList<>();
+        if (pelvis > shoulder) {
+            order.addAll(pelvisParts);
+            order.addAll(shoulderParts);
+        } else {
+            order.addAll(shoulderParts);
+            order.addAll(pelvisParts);
+        }
+        for (TargetPart p : TargetPart.values()) {
+            if (!order.contains(p)) order.add(p);
+        }
+        return order;
+    }
+
+    private int weeklyFrequency(Long userId) {
+        Integer value = profileRepository.findFirstByUserIdOrderByIdDesc(userId)
+                .map(p -> p.getWeeklyFrequency()).orElse(null);
+        int days = value == null ? DEFAULT_WEEKLY_FREQUENCY : value;
+        return Math.max(1, Math.min(7, days));
+    }
+
+    private List<Integer> spreadDays(int perWeek) {
+        List<Integer> offsets = new ArrayList<>();
+        for (int k = 0; k < perWeek; k++) offsets.add(Math.round(k * 7f / perWeek));
+        return offsets;
+    }
+
+    private String itemReason(TargetPart part, BodyAnalysis analysis) {
+        double shoulder = tilt(analysis.getShoulderTiltDeg());
+        double pelvis = tilt(analysis.getPelvisTiltDeg());
+        boolean shoulderPart = part == TargetPart.shoulder || part == TargetPart.back;
+        boolean pelvisPart = part == TargetPart.core || part == TargetPart.leg;
+        String reason = partLabel(part) + " 강화에 효과적인 운동이에요.";
+        CorrectionExercise.TargetIssue issue = null;
+        if (shoulderPart && shoulder >= TILT_CAUTION_DEG) {
+            reason = String.format("어깨 기울기가 %.1f°로 확인되어 %s 강화를 우선했어요.", shoulder, partLabel(part));
+            issue = CorrectionExercise.TargetIssue.shoulder_tilt;
+        } else if (pelvisPart && pelvis >= TILT_CAUTION_DEG) {
+            reason = String.format("골반 기울기가 %.1f°로 확인되어 %s 강화를 우선했어요.", pelvis, partLabel(part));
+            issue = CorrectionExercise.TargetIssue.pelvis_tilt;
+        }
+        if (issue != null) {
+            List<CorrectionExercise> corrections = correctionRepository.findByTargetIssueAndIsActiveTrue(issue);
+            if (!corrections.isEmpty()) {
+                CorrectionExercise c = corrections.get(0);
+                reason = reason + " 교정: " + c.getName() + " " + c.getDurationOrReps();
+            }
+        }
+        return reason.length() > 200 ? reason.substring(0, 200) : reason;
     }
 
     private String partLabel(TargetPart part) {
@@ -330,7 +425,15 @@ public class BodyAnalysisController {
             try { judgements = objectMapper.readValue(a.getJudgementsJson(), List.class); } catch (Exception ignored) {}
         }
         m.put("judgements", judgements);
-        m.put("goal_comparison", null);
+        if (a.getComparisonSummary() != null) {
+            Map<String, Object> comparison = new LinkedHashMap<>();
+            comparison.put("summary", a.getComparisonSummary());
+            comparison.put("detail", a.getComparisonDetail() != null ? a.getComparisonDetail() : "");
+            comparison.put("priority_parts", List.of());
+            m.put("goal_comparison", comparison);
+        } else {
+            m.put("goal_comparison", null);
+        }
         return m;
     }
 }

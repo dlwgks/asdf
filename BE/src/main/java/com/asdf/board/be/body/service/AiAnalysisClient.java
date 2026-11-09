@@ -72,6 +72,25 @@ public class AiAnalysisClient {
         }
     }
 
+    public Integer similarity(String frontStorageKey, String goalStorageKey) {
+        if (!isConfigured() || frontStorageKey == null || goalStorageKey == null) return null;
+        try {
+            Path root = Paths.get(uploadDir).toAbsolutePath();
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("front_image", namedResource(Files.readAllBytes(root.resolve(frontStorageKey)), frontStorageKey));
+            body.add("goal_image", namedResource(Files.readAllBytes(root.resolve(goalStorageKey)), goalStorageKey));
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                    aiServerUrl + "/v1/similarity", new HttpEntity<>(body, headers), String.class);
+            Map<String, Object> parsed = objectMapper.readValue(response.getBody(), new TypeReference<>() {});
+            return parsed.get("score") instanceof Number n ? n.intValue() : null;
+        } catch (Exception e) {
+            log.warn("Goal similarity failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private ByteArrayResource namedResource(byte[] bytes, String key) {
         return new ByteArrayResource(bytes) {
             @Override

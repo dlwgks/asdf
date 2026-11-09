@@ -11,8 +11,12 @@ import com.asdf.board.be.user.entity.User;
 import com.asdf.board.be.user.repository.UserProfileRepository;
 import com.asdf.board.be.user.repository.UserRepository;
 import com.asdf.board.be.workout.entity.Routine;
+import com.asdf.board.be.workout.entity.WorkoutLog;
+import com.asdf.board.be.workout.entity.WorkoutSet;
 import com.asdf.board.be.workout.repository.RoutineItemRepository;
 import com.asdf.board.be.workout.repository.RoutineRepository;
+import com.asdf.board.be.workout.repository.WorkoutLogRepository;
+import com.asdf.board.be.workout.repository.WorkoutSetRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +53,8 @@ public class AiCoachController {
     private final UserProfileRepository profileRepository;
     private final RoutineRepository routineRepository;
     private final RoutineItemRepository routineItemRepository;
+    private final WorkoutLogRepository workoutLogRepository;
+    private final WorkoutSetRepository workoutSetRepository;
 
     @Value("${vitality.coach.server-url:}")
     private String coachServerUrl;
@@ -159,7 +165,23 @@ public class AiCoachController {
                     .map(it -> it.getExercise().getName() + " " + it.getTargetSets() + "세트 " + it.getTargetReps() + "회").toList();
             sb.append("- 오늘 루틴: ").append(r.getTitle()).append(" (").append(String.join(", ", names)).append(")\n");
         });
+        sb.append(completedTodaySummary(userId, today));
         return sb.length() == 0 ? "- 등록된 정보가 없어요.\n" : sb.toString();
+    }
+
+    private String completedTodaySummary(Long userId, LocalDate today) {
+        List<WorkoutLog> logs = workoutLogRepository
+                .findByUserIdAndDateRange(userId, today, today, WorkoutLog.Status.completed, PageRequest.of(0, 20))
+                .getContent();
+        if (logs.isEmpty()) return "- 오늘 완료한 운동: 없음\n";
+        List<String> parts = new ArrayList<>();
+        for (WorkoutLog log : logs) {
+            List<WorkoutSet> doneSets = workoutSetRepository.findByLogIdOrderBySetNoAsc(log.getId()).stream()
+                    .filter(WorkoutSet::getIsDone).toList();
+            double volume = doneSets.stream().mapToDouble(s -> s.getWeightKg().doubleValue() * s.getReps()).sum();
+            parts.add(log.getExercise().getName() + " " + doneSets.size() + "세트(총 볼륨 " + Math.round(volume) + "kg)");
+        }
+        return "- 오늘 완료한 운동: " + String.join(", ", parts) + "\n";
     }
 
     private Map<String, Object> toMap(AiChatMessage m) {

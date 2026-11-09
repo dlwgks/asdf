@@ -25,5 +25,7 @@ public interface WorkoutLogRepository extends JpaRepository<WorkoutLog, Long> {
 
     Optional<WorkoutLog> findByUserIdAndExerciseIdAndStatus(Long userId, Long exerciseId, WorkoutLog.Status status);
 
+    List<WorkoutLog> findByRoutineIdAndStatus(Long routineId, WorkoutLog.Status status);
+
     List<WorkoutLog> findByUserIdAndStatus(Long userId, WorkoutLog.Status status);
 }

@@ -5,7 +5,9 @@ import com.asdf.board.be.global.exception.ApiException;
 import com.asdf.board.be.global.exception.ErrorCode;
 import com.asdf.board.be.workout.entity.Routine;
 import com.asdf.board.be.workout.entity.RoutineItem;
+import com.asdf.board.be.workout.entity.WorkoutLog;
 import com.asdf.board.be.workout.repository.RoutineItemRepository;
+import com.asdf.board.be.workout.repository.WorkoutLogRepository;
 import com.asdf.board.be.workout.repository.RoutineRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.transaction.Transactional;
@@ -27,6 +29,7 @@ public class RoutineController {
 
     private final RoutineRepository routineRepository;
     private final RoutineItemRepository itemRepository;
+    private final WorkoutLogRepository workoutLogRepository;
     private final BodyAnalysisController bodyAnalysisController;
 
     private Long userId(Jwt jwt) { return Long.valueOf(jwt.getSubject()); }
@@ -71,7 +74,8 @@ public class RoutineController {
             day.put("is_rest_day", r == null);
             if (r != null) {
                 List<RoutineItem> items = itemRepository.findByRoutineIdOrderByOrderNoAsc(r.getId());
-                long doneCount = 0;
+                Set<Long> doneExercises = doneExerciseIds(r.getId());
+                long doneCount = items.stream().filter(it -> doneExercises.contains(it.getExercise().getId())).count();
                 Map<String, Object> summary = new LinkedHashMap<>();
                 summary.put("routine_id", r.getId());
                 summary.put("title", r.getTitle());
@@ -120,12 +124,21 @@ public class RoutineController {
         m.put("estimated_minutes", r.getEstimatedMinutes());
         m.put("status", r.getStatus().name());
         if (includeItems) {
-            m.put("items", items.stream().map(this::itemToMap).toList());
+            Set<Long> doneExercises = doneExerciseIds(r.getId());
+            m.put("items", items.stream().map(it -> itemToMap(it, doneExercises.contains(it.getExercise().getId()))).toList());
         }
         return m;
     }
 
-    private Map<String, Object> itemToMap(RoutineItem item) {
+    private Set<Long> doneExerciseIds(Long routineId) {
+        Set<Long> ids = new HashSet<>();
+        for (WorkoutLog l : workoutLogRepository.findByRoutineIdAndStatus(routineId, WorkoutLog.Status.completed)) {
+            ids.add(l.getExercise().getId());
+        }
+        return ids;
+    }
+
+    private Map<String, Object> itemToMap(RoutineItem item, boolean done) {
         Map<String, Object> exerciseMap = new LinkedHashMap<>();
         exerciseMap.put("exercise_id", item.getExercise().getId());
         exerciseMap.put("name", item.getExercise().getName());
@@ -143,7 +156,7 @@ public class RoutineController {
         m.put("rest_sec", 90);
         m.put("target_weight_kg", item.getTargetWeightKg());
         m.put("reason", item.getReason());
-        m.put("done", false);
+        m.put("done", done);
         return m;
     }
 }

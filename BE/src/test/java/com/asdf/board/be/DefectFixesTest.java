@@ -187,6 +187,24 @@ class DefectFixesTest {
     }
 
     @Test
+    void 운동_종료_응답은_앱이_쓰는_필드를_모두_담는다() throws Exception {
+        Long id = startWorkout();
+        mvc.perform(post("/api/workout-logs/" + id + "/sets").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"weight_kg\":123,\"reps\":10}").header("Authorization", auth(token)))
+                .andExpect(status().isCreated());
+        mvc.perform(patch("/api/workout-logs/" + id + "/complete").contentType(MediaType.APPLICATION_JSON)
+                        .content("{}").header("Authorization", auth(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.completed_at").value(matchesPattern(".*\\+09:00")))
+                .andExpect(jsonPath("$.set_count").value(1))
+                .andExpect(jsonPath("$.total_volume_kg").value(1230.0));
+        mvc.perform(get("/api/workout-logs").param("start_date", "2000-01-01").param("end_date", "2999-12-31").header("Authorization", auth(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].set_count").value(1))
+                .andExpect(jsonPath("$.items[0].total_volume_kg").value(1230.0));
+    }
+
+    @Test
     void 댓글_작성은_생성된_댓글을_돌려주고_본인_글_신고는_거절된다() throws Exception {
         String post = mvc.perform(multipart("/api/posts")
                         .file(new MockMultipartFile("category", "", "text/plain", "info".getBytes()))
