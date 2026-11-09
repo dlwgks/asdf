@@ -45,11 +45,12 @@ class AnalysisEngine:
         self.pose_guard = create_pose_guard() if pose_guard is None else pose_guard
         try:
             self.dino = DinoFeatureExtractor(model_path, device=device, local_only=Path(model_path).exists())
-            classifier_path = os.environ.get('AI_CONTOUR_MODEL')
-            self.contour = ContourClassifier(classifier_path) if classifier_path else None
-        except Exception:
-            self.close()
-            raise
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning('DINOv3 model unavailable (%s). Photo measurements will work without arm feature extraction.', exc)
+            self.dino = None
+        classifier_path = os.environ.get('AI_CONTOUR_MODEL')
+        self.contour = ContourClassifier(classifier_path) if classifier_path else None
 
     def close(self):
         if self.pose_guard:
@@ -119,24 +120,27 @@ class AnalysisEngine:
                 {'key': 'neck_forward_deg', 'reason': side_measure['reason']}]
             quality = photo_quality(lm, image.shape[1], image.shape[0], blur, person_check)
             features = []
-            with Image.open(image_path) as pil:
-                for side in ('left','right'):
-                    box = upper_arm_box(lm, side, *pil.size)
-                    if box is None:
-                        features.append({'part': f'{side}_upper_arm','status':'unavailable','reason':'LOW_CONFIDENCE'})
-                        continue
-                    crop = pil.crop(box).convert('RGB')
-                    values, elapsed = self.dino.extract(crop)
-                    if any(not np.isfinite(v).all() for v in values.values()):
-                        raise RuntimeError('Non-finite DINOv3 features')
-                    features.append({'part':f'{side}_upper_arm', 'status':'extracted',
-                                     'classification':'not_trained','crop_box':list(box),
-                                     'cls':values['cls'].tolist(), 'patch_mean':values['patch_mean'].tolist(),
-                                     'patch_shape':list(values['patches'].shape), 'seconds':round(elapsed,4)})
-                    if include_review_previews:
-                        preview = io.BytesIO()
-                        crop.save(preview, format='JPEG', quality=85)
-                        features[-1]['preview_image_base64'] = base64.b64encode(preview.getvalue()).decode()
+            if self.dino is not None:
+                with Image.open(image_path) as pil:
+                    for side in ('left','right'):
+                        box = upper_arm_box(lm, side, *pil.size)
+                        if box is None:
+                            features.append({'part': f'{side}_upper_arm','status':'unavailable','reason':'LOW_CONFIDENCE'})
+                            continue
+                        crop = pil.crop(box).convert('RGB')
+                        values, elapsed = self.dino.extract(crop)
+                        if any(not np.isfinite(v).all() for v in values.values()):
+                            raise RuntimeError('Non-finite DINOv3 features')
+                        features.append({'part':f'{side}_upper_arm', 'status':'extracted',
+                                         'classification':'not_trained','crop_box':list(box),
+                                         'cls':values['cls'].tolist(), 'patch_mean':values['patch_mean'].tolist(),
+                                         'patch_shape':list(values['patches'].shape), 'seconds':round(elapsed,4)})
+                        if include_review_previews:
+                            preview = io.BytesIO()
+                            crop.save(preview, format='JPEG', quality=85)
+                            features[-1]['preview_image_base64'] = base64.b64encode(preview.getvalue()).decode()
+            else:
+                features = [{'part': f'{s}_upper_arm', 'status': 'unavailable', 'reason': 'MODEL_NOT_LOADED'} for s in ('left', 'right')]
             if self.contour is not None:
                 for part in features:
                     if part['status'] == 'extracted':

@@ -82,7 +82,8 @@ def contour_test():
 @app.get('/health')
 def health():
     classifier = getattr(app.state.engine, 'contour', None)
-    return {'status': 'ok', 'dinov3_loaded': True, 'device': app.state.engine.dino.device,
+    dino = app.state.engine.dino
+    return {'status': 'ok', 'dinov3_loaded': dino is not None, 'device': dino.device if dino else 'unavailable',
             'pose_guard_loaded': bool(getattr(app.state.engine, 'pose_guard', None)),
             'contour_classifier_loaded': classifier is not None,
             'contour_model': None if classifier is None else {
@@ -149,6 +150,36 @@ def analyze(front_images: Annotated[list[UploadFile], File()],
                 if part.get('status') == 'extracted':
                     part['review_session'] = review_sessions.create(part['part'], part['cls'] + part['patch_mean'])
         return result
+
+
+def _cosine(a, b) -> float:
+    import numpy as np
+    a = np.asarray(a, dtype='float64')
+    b = np.asarray(b, dtype='float64')
+    denominator = float(np.linalg.norm(a) * np.linalg.norm(b))
+    return float(a @ b) / denominator if denominator else 0.0
+
+
+@app.post('/v1/similarity')
+def similarity(front_image: Annotated[UploadFile, File()], goal_image: Annotated[UploadFile, File()]):
+    dino = getattr(app.state.engine, 'dino', None)
+    if dino is None:
+        raise HTTPException(503, detail={'code': 'MODEL_NOT_LOADED', 'message': 'DINOv3 모델이 준비되지 않았어요.'})
+    with analysis_slot(), tempfile.TemporaryDirectory(prefix='movid-sim-') as directory:
+        root = Path(directory)
+        paths = [save_image(front_image, root, 0), save_image(goal_image, root, 1)]
+        features = []
+        for path in paths:
+            with Image.open(path) as source:
+                values, _ = dino.extract(source.convert('RGB'))
+            features.append(values)
+        cls_cosine = _cosine(features[0]['cls'], features[1]['cls'])
+        patch_cosine = _cosine(features[0]['patch_mean'], features[1]['patch_mean'])
+        raw = (cls_cosine + patch_cosine) / 2
+        return {'score': round(max(0.0, min(1.0, raw)) * 100),
+                'cls_cosine': round(cls_cosine, 4), 'patch_cosine': round(patch_cosine, 4),
+                'method': 'dinov3-cosine-v1',
+                'note': 'DINOv3 이미지 특징의 코사인 유사도입니다. 자세·의복·배경의 영향을 받으며 근육량이나 체형 일치도가 아닙니다.'}
 
 
 @app.post('/analyze/body', response_model=BodyAnalysisResponse)
